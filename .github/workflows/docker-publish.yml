@@ -37,7 +37,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          repository: 'https://github.com/ConardLi/easy-dataset.git'
+          repository: 'ConardLi/easy-dataset'
         
 
       # Install the cosign tool except on PR

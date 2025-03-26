@@ -14,7 +14,9 @@ import {
   Snackbar,
   Backdrop,
   Paper,
-  LinearProgress
+  LinearProgress,
+  Select,
+  MenuItem
 } from '@mui/material';
 import FileUploader from '@/components/text-split/FileUploader';
 import ChunkList from '@/components/text-split/ChunkList';
@@ -34,6 +36,7 @@ export default function TextSplitPage({ params }) {
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null); // 可以是字符串或对象 { severity, message }
+  const [questionFilter, setQuestionFilter] = useState('all'); // 'all', 'generated', 'ungenerated'
   const { taskSettings } = useTaskSettings(projectId);
 
   // 进度状态
@@ -62,7 +65,17 @@ export default function TextSplitPage({ params }) {
 
       const data = await response.json();
       setChunks(data.chunks || []);
-      setShowChunks(data.chunks || []);
+
+      // Apply filter when setting showChunks
+      const filteredChunks = (data.chunks || []).filter(chunk => {
+        if (questionFilter === 'generated') {
+          return chunk.questions && chunk.questions.length > 0;
+        } else if (questionFilter === 'ungenerated') {
+          return !chunk.questions || chunk.questions.length === 0;
+        }
+        return true;
+      });
+      setShowChunks(filteredChunks);
 
       // 如果有文件结果，处理详细信息
       if (data.toc) {
@@ -349,10 +362,30 @@ export default function TextSplitPage({ params }) {
   };
 
   // 处理文件删除
-  const handleFileDeleted = fileName => {
+  const handleFileDeleted = (fileName, filesCount) => {
     console.log(t('textSplit.fileDeleted', { fileName }));
-    // 刷新文本块列表
-    fetchChunks();
+    // 从 localStorage 获取当前选择的模型信息
+    let selectedModelInfo = null;
+
+    // 尝试从 localStorage 获取完整的模型信息
+    const modelInfoStr = localStorage.getItem('selectedModelInfo');
+
+    if (modelInfoStr) {
+      try {
+        selectedModelInfo = JSON.parse(modelInfoStr);
+      } catch (e) {
+        throw new Error(t('textSplit.modelInfoParseError'));
+      }
+    } else {
+      throw new Error(t('textSplit.selectModelFirst'));
+    }
+    //如果多个文件的情况下，删除的不是最后一个文件，就复用handleSplitText重新构建领域树
+    if (filesCount > 1) {
+      handleSplitText(["rebuildToc.md"], selectedModelInfo);
+    } else {//删除最后一个文件仅刷新界面即可
+      location.reload();
+    }
+
   };
 
   // 关闭错误提示
@@ -379,6 +412,22 @@ export default function TextSplitPage({ params }) {
         </Alert>
       </Snackbar>
     );
+  };
+
+  // 处理筛选器变更
+  const handleQuestionFilterChange = (value) => {
+    setQuestionFilter(value);
+
+    // 应用筛选
+    const filteredChunks = chunks.filter(chunk => {
+      if (value === 'generated') {
+        return chunk.questions && chunk.questions.length > 0;
+      } else if (value === 'ungenerated') {
+        return !chunk.questions || chunk.questions.length === 0;
+      }
+      return true;
+    });
+    setShowChunks(filteredChunks);
   };
 
   const handleSelected = (array) => {
@@ -431,6 +480,8 @@ export default function TextSplitPage({ params }) {
             onDelete={handleDeleteChunk}
             onGenerateQuestions={handleGenerateQuestions}
             loading={loading}
+            questionFilter={questionFilter}
+            onQuestionFilterChange={handleQuestionFilterChange}
           />
         )}
 

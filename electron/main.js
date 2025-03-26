@@ -1,7 +1,6 @@
 const { app, BrowserWindow, dialog, Menu, shell, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
-const { fork } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 const url = require('url');
@@ -47,7 +46,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    fullscreen: true,
+    show: false,
+    frame: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -89,8 +89,8 @@ function createWindow() {
     const currentPort = port.toString();
 
     // 检查是否是外部链接
-    if (parsedUrl.hostname !== currentHostname || 
-        (parsedUrl.port !== currentPort && parsedUrl.port !== '')) {
+    if (parsedUrl.hostname !== currentHostname ||
+      (parsedUrl.port !== currentPort && parsedUrl.port !== '')) {
       event.preventDefault();
       shell.openExternal(navigationUrl);
     }
@@ -104,8 +104,8 @@ function createWindow() {
     const currentPort = port.toString();
 
     // 检查是否是外部链接
-    if (parsedUrl.hostname !== currentHostname || 
-        (parsedUrl.port !== currentPort && parsedUrl.port !== '')) {
+    if (parsedUrl.hostname !== currentHostname ||
+      (parsedUrl.port !== currentPort && parsedUrl.port !== '')) {
       shell.openExternal(navigationUrl);
       return { action: 'deny' };
     }
@@ -118,6 +118,8 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  mainWindow.maximize();
 }
 
 // 创建应用菜单
@@ -156,6 +158,16 @@ function createMenu() {
     {
       label: '帮助',
       submenu: [
+        {
+          label: '打开日志目录',
+          click: () => {
+            const logsDir = path.join(app.getPath('userData'), 'logs');
+            if (!fs.existsSync(logsDir)) {
+              fs.mkdirSync(logsDir, { recursive: true });
+            }
+            shell.openPath(logsDir);
+          }
+        },
         {
           label: '关于',
           click: () => {
@@ -232,7 +244,7 @@ function setupAutoUpdater() {
 
   // 检查更新时出错
   autoUpdater.on('error', (error) => {
-    dialog.showErrorBox('更新错误', `检查更新时出错: ${error.message}`);
+    // dialog.showErrorBox('更新错误', `检查更新时出错: ${error.message}`);
     if (mainWindow) {
       mainWindow.webContents.send('update-error', error.message);
     }
@@ -360,4 +372,22 @@ app.on('before-quit', () => {
     console.log('正在关闭 Next.js 服务...');
     // 这里可以添加清理 Next.js 服务的代码
   }
+});
+
+ipcMain.on('log', (event, { level, message }) => {
+  const timestamp = new Date().toISOString();
+  const logEntry = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+
+  // 只在客户端环境下写入文件
+  if (!isDev || true) {
+    const logsDir = path.join(app.getPath('userData'), 'logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    const logFile = path.join(logsDir, `${new Date().toISOString().split('T')[0]}.log`);
+    fs.appendFileSync(logFile, logEntry);
+  }
+
+  // 同时输出到控制台
+  console[level](message);
 });
